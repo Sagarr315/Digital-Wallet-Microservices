@@ -22,6 +22,7 @@ public class WalletService {
     @Autowired
     private BankLinkRepository bankLinkRepository;
 
+    //  Create wallet
     public String createWallet(WalletRequest request, Long authenticatedUserId) {
         if (!request.getUserId().equals(authenticatedUserId)) {
             throw new RuntimeException("Unauthorized: Can only create your own wallet");
@@ -37,6 +38,7 @@ public class WalletService {
         return "Wallet created successfully";
     }
 
+    //  Get balance
     public BalanceResponse getBalance(Long userId, Long authenticatedUserId) {
         if (!userId.equals(authenticatedUserId)) {
             throw new RuntimeException("Unauthorized: Can only check your own balance");
@@ -50,6 +52,7 @@ public class WalletService {
         return new BalanceResponse(userId, wallet.get().getBalance());
     }
 
+    //  Link bank account
     public String linkBankAccount(Long userId, LinkBankRequest request, Long authenticatedUserId) {
         if (!userId.equals(authenticatedUserId)) {
             throw new RuntimeException("Unauthorized: Can only link bank to your own wallet");
