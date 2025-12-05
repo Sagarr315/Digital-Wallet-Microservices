@@ -5,7 +5,6 @@ import com.digitalwallet.paymentservice.dto.ValidationResponse;
 import com.digitalwallet.paymentservice.dto.ProcessPaymentResponse;
 import com.digitalwallet.paymentservice.entity.PaymentValidationLog;
 import com.digitalwallet.paymentservice.repository.PaymentValidationLogRepository;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,11 +25,13 @@ public class PaymentService {
     private PaymentValidationLogRepository logRepository;
 
     @Autowired
+
     private HttpServletRequest httpServletRequest;
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     private static final BigDecimal DAILY_LIMIT = new BigDecimal("50000.00");
+
     private static final BigDecimal MIN_AMOUNT = new BigDecimal("1.00");
 
     public ValidationResponse validatePayment(PaymentRequest request) {
@@ -38,7 +39,6 @@ public class PaymentService {
             saveLog(request.getUserId(), request.getAmount(), false, "Amount must be at least ₹1");
             return new ValidationResponse(false, "Amount must be at least ₹1");
         }
-
         if (request.getAmount().compareTo(DAILY_LIMIT) > 0) {
             saveLog(request.getUserId(), request.getAmount(), false, "Amount exceeds daily limit of ₹50,000");
             return new ValidationResponse(false, "Amount exceeds daily limit of ₹50,000");
@@ -49,7 +49,6 @@ public class PaymentService {
             saveLog(request.getUserId(), request.getAmount(), false, "Sender wallet not found");
             return new ValidationResponse(false, "Sender wallet not found");
         }
-
         if (senderBalance.compareTo(request.getAmount()) < 0) {
             saveLog(request.getUserId(), request.getAmount(), false, "Insufficient balance");
             return new ValidationResponse(false, "Insufficient balance");
@@ -67,42 +66,29 @@ public class PaymentService {
 
     public ProcessPaymentResponse processPayment(PaymentRequest request) {
         ValidationResponse validation = validatePayment(request);
-
         if (!validation.getApproved()) {
             return new ProcessPaymentResponse(false, "Cannot process: " + validation.getMessage());
         }
-
         String referenceId = "PAYREF" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-
         saveLog(request.getUserId(), request.getAmount(), true, "Payment processed with ref: " + referenceId);
         return new ProcessPaymentResponse(true, referenceId);
     }
 
     private BigDecimal getWalletBalance(Long userId) {
         try {
-            String url = "http://WALLET-SERVICE/wallet/balance?userId=" + userId;
-
+            String url = "http://WALLET-SERVICE/wallet/internal/balance?userId=" + userId;
             String authHeader = httpServletRequest.getHeader("Authorization");
-            if (authHeader == null) {
-                return null;
-            }
+            if (authHeader == null) return null;
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("Authorization", authHeader);
             HttpEntity<String> entity = new HttpEntity<>(headers);
 
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url, HttpMethod.GET, entity, String.class
-            );
-
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             if (response.getStatusCode() == HttpStatus.OK) {
-                JsonNode node = objectMapper.readTree(response.getBody());
-                if (node.has("balance")) {
-                    return new BigDecimal(node.get("balance").asText());
-                }
+                return new BigDecimal(response.getBody());
             }
         } catch (Exception e) {
-            // Wallet not found or error
         }
         return null;
     }
