@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,7 +18,7 @@ public class PaymentEventProducer {
 
     // ACCEPTS 5 PARAMETERS
     public void sendPaymentEvent(Long transactionId, Long senderId, Long receiverId,
-                                 String amount, String referenceId) {
+                                 BigDecimal amount, String referenceId) {
         Map<String, Object> event = new HashMap<>();
         event.put("eventType", "payment.sent");
         event.put("transactionId", transactionId);

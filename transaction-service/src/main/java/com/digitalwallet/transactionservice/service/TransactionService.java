@@ -79,7 +79,7 @@ public class TransactionService {
                         transaction.getId(),
                         request.getSenderId(),
                         request.getReceiverId(),
-                        request.getAmount().toString(),
+                        request.getAmount(),
                         referenceId
                 );
             } catch (Exception kafkaError) {
