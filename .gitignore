@@ -1,42 +1,35 @@
-# ========================
-# Root .gitignore (CLEAN)
-# ========================
-
-# --- Maven ---
+# Maven
 target/
 *.log
-!**/src/main/**/target/
-!**/src/test/**/target/
 
-# --- IntelliJ IDEA ---
+# IntelliJ IDEA
 .idea/
 *.iml
 out/
 
-# --- Eclipse ---
+# Eclipse
 .project
 .classpath
 .settings/
 
-# --- VS Code ---
+# VS Code
 .vscode/
 
-# --- Secrets / Environment Files ---
+# Secrets
 application.yml
 application-dev.yml
 application-prod.yml
 *.env
-*.env.*
 *.secret
 *.keystore
 *.jks
 secrets.yml
 
-# --- OS Files ---
+# OS
 .DS_Store
 Thumbs.db
 
-# --- Maven Wrapper ---
+# Maven Wrapper
 .mvn/
 mvnw
 mvnw.cmd
