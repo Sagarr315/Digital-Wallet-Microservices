@@ -40,7 +40,8 @@ public class WalletController {
     public ResponseEntity<?> getBalance(@RequestParam Long userId,
                                         @RequestAttribute Long authenticatedUserId) {
         try {
-            BalanceResponse response = walletService.getBalance(userId, authenticatedUserId);
+            BigDecimal balance = walletService.getBalance(userId, authenticatedUserId);
+            BalanceResponse response = new BalanceResponse(userId, balance);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

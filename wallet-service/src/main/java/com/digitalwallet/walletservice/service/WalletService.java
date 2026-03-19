@@ -8,6 +8,7 @@ import com.digitalwallet.walletservice.entity.Wallet;
 import com.digitalwallet.walletservice.repository.BankLinkRepository;
 import com.digitalwallet.walletservice.repository.WalletRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -39,7 +40,11 @@ public class WalletService {
     }
 
     //  Get balance
-    public BalanceResponse getBalance(Long userId, Long authenticatedUserId) {
+    @Cacheable(value = "walletBalance", key = "#userId")
+    public BigDecimal getBalance(Long userId, Long authenticatedUserId) {
+        // for testing if hit db then in console will show
+        System.out.println("DATABASE CALL - Fetching balance for user: " + userId);
+
         if (!userId.equals(authenticatedUserId)) {
             throw new RuntimeException("Unauthorized: Can only check your own balance");
         }
@@ -49,7 +54,7 @@ public class WalletService {
             throw new RuntimeException("Wallet not found");
         }
 
-        return new BalanceResponse(userId, wallet.get().getBalance());
+        return wallet.get().getBalance();
     }
 
     //  Link bank account
