@@ -8,6 +8,7 @@ import com.digitalwallet.walletservice.entity.Wallet;
 import com.digitalwallet.walletservice.repository.BankLinkRepository;
 import com.digitalwallet.walletservice.repository.WalletRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -42,8 +43,6 @@ public class WalletService {
     //  Get balance
     @Cacheable(value = "walletBalance", key = "#userId")
     public BigDecimal getBalance(Long userId, Long authenticatedUserId) {
-        // for testing if hit db then in console will show
-        System.out.println("DATABASE CALL - Fetching balance for user: " + userId);
 
         if (!userId.equals(authenticatedUserId)) {
             throw new RuntimeException("Unauthorized: Can only check your own balance");
@@ -71,5 +70,10 @@ public class WalletService {
         bankLinkRepository.save(linkedBank);
 
         return "Bank linked successfully";
+    }
+
+    @CacheEvict(value = "walletBalance", key = "#userId")
+    public void evictBalanceCache(Long userId) {
+        System.out.println("Cache evicted for user: " + userId);
     }
 }

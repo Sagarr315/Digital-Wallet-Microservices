@@ -84,6 +84,8 @@ public class WalletController {
         wallet.setBalance(wallet.getBalance().subtract(amount));
         walletRepository.save(wallet);
 
+        walletService.evictBalanceCache(userId);
+
         return ResponseEntity.ok("Balance deducted successfully");
     }
 
@@ -107,6 +109,8 @@ public class WalletController {
         wallet.setBalance(wallet.getBalance().add(amount));
         walletRepository.save(wallet);
 
+        walletService.evictBalanceCache(userId);
+        
         return ResponseEntity.ok("Balance added successfully");
     }
 
