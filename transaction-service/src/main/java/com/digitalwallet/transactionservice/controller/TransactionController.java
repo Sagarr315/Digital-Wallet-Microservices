@@ -11,8 +11,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Optional;
+
+import org.springframework.data.domain.Page;
 
 @RestController
 @RequestMapping("/transaction")
@@ -48,6 +49,8 @@ public class TransactionController {
     @GetMapping("/history/{userId}")
     public ResponseEntity<?> getTransactionHistory(
             @PathVariable Long userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestAttribute("authenticatedUserId") Long authenticatedUserId) {
 
         if (!userId.equals(authenticatedUserId)) {
@@ -55,10 +58,10 @@ public class TransactionController {
                     .body("Unauthorized: Can only view your own transaction history");
         }
 
-        List<TransactionHistoryResponse> history =
-                transactionService.getTransactionHistory(userId);
+        Page<TransactionHistoryResponse> historyPage =
+                transactionService.getTransactionHistoryPaginated(userId, page, size);
 
-        return ResponseEntity.ok(history);
+        return ResponseEntity.ok(historyPage);
     }
 
     @GetMapping("/{txnId}")

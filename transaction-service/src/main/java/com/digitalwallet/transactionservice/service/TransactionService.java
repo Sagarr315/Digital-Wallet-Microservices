@@ -20,7 +20,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @Service
 public class TransactionService {
@@ -94,27 +98,22 @@ public class TransactionService {
         }
     }
 
-    public List<TransactionHistoryResponse> getTransactionHistory(Long userId) {
-        try {
-            List<Transaction> allTransactions =
-                    transactionRepository.findBySenderIdOrReceiverIdOrderByTimestampDesc(userId, userId);
+    public Page<TransactionHistoryResponse> getTransactionHistoryPaginated(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("timestamp").descending());
 
-            return allTransactions.stream()
-                    .map(txn -> {
-                        boolean isSender = txn.getSenderId().equals(userId);
-                        return new TransactionHistoryResponse(
-                                txn.getId(),
-                                isSender ? "DEBIT" : "CREDIT",
-                                txn.getAmount(),
-                                isSender ? txn.getReceiverId() : txn.getSenderId(),
-                                txn.getTimestamp()
-                        );
-                    })
-                    .collect(Collectors.toList());
+        Page<Transaction> transactionPage =
+                transactionRepository.findBySenderIdOrReceiverIdOrderByTimestampDesc(userId, userId, pageable);
 
-        } catch (Exception e) {
-            return new ArrayList<>();
-        }
+        return transactionPage.map(txn -> {
+            boolean isSender = txn.getSenderId().equals(userId);
+            return new TransactionHistoryResponse(
+                    txn.getId(),
+                    isSender ? "DEBIT" : "CREDIT",
+                    txn.getAmount(),
+                    isSender ? txn.getReceiverId() : txn.getSenderId(),
+                    txn.getTimestamp()
+            );
+        });
     }
 
     public TransactionDetailResponse getTransactionDetails(Long txnId) {
