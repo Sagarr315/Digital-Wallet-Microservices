@@ -4,9 +4,14 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "ledger")
+@Table(name = "ledger", indexes = {
+        @Index(name = "idx_ledger_user_timestamp", columnList = "userId, timestamp DESC"),
+        @Index(name = "idx_ledger_txn_id", columnList = "txnId")
+})
 public class Ledger {
 
     @Id

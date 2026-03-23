@@ -4,9 +4,15 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = {
+        @Index(name = "idx_sender_timestamp", columnList = "senderId, timestamp DESC"),
+        @Index(name = "idx_receiver_timestamp", columnList = "receiverId, timestamp DESC"),
+        @Index(name = "idx_status", columnList = "status")
+})
 public class Transaction {
 
     @Id
