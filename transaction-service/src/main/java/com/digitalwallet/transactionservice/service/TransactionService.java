@@ -1,11 +1,13 @@
 package com.digitalwallet.transactionservice.service;
 
+import com.digitalwallet.transactionservice.entity.IdempotencyRecord;
 import com.digitalwallet.transactionservice.dto.SendMoneyRequest;
 import com.digitalwallet.transactionservice.dto.TransactionResponse;
 import com.digitalwallet.transactionservice.dto.TransactionHistoryResponse;
 import com.digitalwallet.transactionservice.dto.TransactionDetailResponse;
 import com.digitalwallet.transactionservice.entity.Transaction;
 import com.digitalwallet.transactionservice.entity.Ledger;
+import com.digitalwallet.transactionservice.repository.IdempotencyRepository;
 import com.digitalwallet.transactionservice.repository.TransactionRepository;
 import com.digitalwallet.transactionservice.repository.LedgerRepository;
 import com.digitalwallet.transactionservice.kafka.PaymentEventProducer;
@@ -44,11 +46,38 @@ public class TransactionService {
     @Autowired
     private HttpServletRequest httpServletRequest;
 
+    @Autowired
+    private IdempotencyRepository idempotencyRepository;
+
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional
-    public TransactionResponse sendMoney(SendMoneyRequest request) {
+    public TransactionResponse sendMoney(SendMoneyRequest request, String idempotencyKey) {
         try {
+
+            //  STEP 1: Check existing idempotency key
+            Optional<IdempotencyRecord> existing =
+                    idempotencyRepository.findByKey(idempotencyKey);
+
+            if (existing.isPresent()) {
+                IdempotencyRecord record = existing.get();
+                try {
+                    return objectMapper.readValue(
+                            record.getResponse(),
+                            TransactionResponse.class
+                    );
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to deserialize response");
+                }
+            }
+
+            //  STEP 2: Save PENDING record
+            IdempotencyRecord record = new IdempotencyRecord();
+            record.setKey(idempotencyKey);
+            record.setStatus("PENDING");
+            idempotencyRepository.save(record);
+
+            // STEP 3:  Process transaction flow
             if (!validatePaymentWithPaymentService(request)) {
                 return new TransactionResponse(false, null, null, "Payment validation failed");
             }
@@ -89,10 +118,36 @@ public class TransactionService {
             } catch (Exception kafkaError) {
             }
 
-            return new TransactionResponse(true, transaction.getId(),
-                    referenceId, "Payment sent successfully");
+            //  STEP 4: Create response
+            TransactionResponse response = new TransactionResponse(
+                    true,
+                    transaction.getId(),
+                    referenceId,
+                    "Payment sent successfully"
+            );
+
+            //  STEP 5: Save SUCCESS response
+            try {
+                record.setStatus("SUCCESS");
+                record.setResponse(objectMapper.writeValueAsString(response));
+                idempotencyRepository.save(record);
+            } catch (Exception e) {
+            }
+
+            return response;
 
         } catch (Exception e) {
+
+            //  STEP 6: Handle FAILED
+            Optional<IdempotencyRecord> recordOpt =
+                    idempotencyRepository.findByKey(idempotencyKey);
+
+            if (recordOpt.isPresent()) {
+                IdempotencyRecord record = recordOpt.get();
+                record.setStatus("FAILED");
+                idempotencyRepository.save(record);
+            }
+
             return new TransactionResponse(false, null, null,
                     "Transaction failed: " + e.getMessage());
         }

@@ -28,7 +28,8 @@ public class TransactionController {
     @PostMapping("/send")
     public ResponseEntity<TransactionResponse> sendMoney(
             @RequestBody SendMoneyRequest request,
-            @RequestAttribute("authenticatedUserId") Long authenticatedUserId) {
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestAttribute("authenticatedUserId") Long authenticatedUserId){
 
         if (!request.getSenderId().equals(authenticatedUserId)) {
             return ResponseEntity.badRequest().body(
@@ -37,7 +38,7 @@ public class TransactionController {
             );
         }
 
-        TransactionResponse response = transactionService.sendMoney(request);
+        TransactionResponse response = transactionService.sendMoney(request, idempotencyKey);
 
         if (response.getSuccess()) {
             return ResponseEntity.ok(response);
