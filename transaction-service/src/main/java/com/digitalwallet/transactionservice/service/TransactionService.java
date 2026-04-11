@@ -13,6 +13,7 @@ import com.digitalwallet.transactionservice.repository.LedgerRepository;
 import com.digitalwallet.transactionservice.kafka.PaymentEventProducer;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,18 +50,36 @@ public class TransactionService {
     @Autowired
     private IdempotencyRepository idempotencyRepository;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional
     public TransactionResponse sendMoney(SendMoneyRequest request, String idempotencyKey) {
         try {
+            String cachedResponse = redisTemplate.opsForValue().get(idempotencyKey);
 
-            //  STEP 1: Check existing idempotency key
+            if (cachedResponse != null) {
+                try {
+                    return objectMapper.readValue(cachedResponse, TransactionResponse.class);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to deserialize Redis response");
+                }
+            }
+
             Optional<IdempotencyRecord> existing =
                     idempotencyRepository.findByKey(idempotencyKey);
 
-            if (existing.isPresent()) {
+            if (existing.isPresent() && existing.get().getResponse() != null) {
                 IdempotencyRecord record = existing.get();
+
+                redisTemplate.opsForValue().set(
+                        idempotencyKey,
+                        record.getResponse(),
+                        java.time.Duration.ofMinutes(10)
+                );
+
                 try {
                     return objectMapper.readValue(
                             record.getResponse(),
@@ -71,28 +90,34 @@ public class TransactionService {
                 }
             }
 
-            //  STEP 2: Save PENDING record
             IdempotencyRecord record = new IdempotencyRecord();
             record.setKey(idempotencyKey);
             record.setStatus("PENDING");
             idempotencyRepository.save(record);
 
-            // STEP 3:  Process transaction flow
             if (!validatePaymentWithPaymentService(request)) {
+                record.setStatus("FAILED");
+                idempotencyRepository.save(record);
                 return new TransactionResponse(false, null, null, "Payment validation failed");
             }
 
             String referenceId = getPaymentReference(request);
             if (referenceId == null) {
+                record.setStatus("FAILED");
+                idempotencyRepository.save(record);
                 return new TransactionResponse(false, null, null, "Failed to get payment reference");
             }
 
             if (!updateWalletBalance(request.getSenderId(), request.getAmount(), "deduct")) {
+                record.setStatus("FAILED");
+                idempotencyRepository.save(record);
                 return new TransactionResponse(false, null, null, "Failed to deduct from sender wallet");
             }
 
             if (!updateWalletBalance(request.getReceiverId(), request.getAmount(), "add")) {
                 updateWalletBalance(request.getSenderId(), request.getAmount(), "add");
+                record.setStatus("FAILED");
+                idempotencyRepository.save(record);
                 return new TransactionResponse(false, null, null, "Failed to add to receiver wallet");
             }
 
@@ -118,7 +143,6 @@ public class TransactionService {
             } catch (Exception kafkaError) {
             }
 
-            //  STEP 4: Create response
             TransactionResponse response = new TransactionResponse(
                     true,
                     transaction.getId(),
@@ -126,11 +150,18 @@ public class TransactionService {
                     "Payment sent successfully"
             );
 
-            //  STEP 5: Save SUCCESS response
             try {
+                String responseJson = objectMapper.writeValueAsString(response);
+
                 record.setStatus("SUCCESS");
-                record.setResponse(objectMapper.writeValueAsString(response));
+                record.setResponse(responseJson);
                 idempotencyRepository.save(record);
+
+                redisTemplate.opsForValue().set(
+                        idempotencyKey,
+                        responseJson,
+                        java.time.Duration.ofMinutes(10)
+                );
             } catch (Exception e) {
             }
 
@@ -138,7 +169,6 @@ public class TransactionService {
 
         } catch (Exception e) {
 
-            //  STEP 6: Handle FAILED
             Optional<IdempotencyRecord> recordOpt =
                     idempotencyRepository.findByKey(idempotencyKey);
 
