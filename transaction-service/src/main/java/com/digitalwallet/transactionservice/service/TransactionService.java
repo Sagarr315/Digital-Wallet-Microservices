@@ -1,5 +1,6 @@
 package com.digitalwallet.transactionservice.service;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import com.digitalwallet.transactionservice.entity.IdempotencyRecord;
 import com.digitalwallet.transactionservice.dto.SendMoneyRequest;
 import com.digitalwallet.transactionservice.dto.TransactionResponse;
@@ -225,6 +226,7 @@ public class TransactionService {
         }
     }
 
+    @CircuitBreaker(name = "paymentService", fallbackMethod = "paymentValidationFallback")
     private boolean validatePaymentWithPaymentService(SendMoneyRequest request) {
         try {
             String url = "http://PAYMENT-SERVICE/payment/validate";
@@ -250,6 +252,11 @@ public class TransactionService {
         return false;
     }
 
+    private boolean paymentValidationFallback(SendMoneyRequest request, Exception ex) {
+        return false;
+    }
+
+    @CircuitBreaker(name = "paymentService", fallbackMethod = "paymentReferenceFallback")
     private String getPaymentReference(SendMoneyRequest request) {
         try {
             String url = "http://PAYMENT-SERVICE/payment/process";
@@ -275,6 +282,11 @@ public class TransactionService {
         return null;
     }
 
+    private String paymentReferenceFallback(SendMoneyRequest request, Exception ex) {
+        return null;
+    }
+    
+    @CircuitBreaker(name = "walletService", fallbackMethod = "walletFallback")
     private boolean updateWalletBalance(Long userId, BigDecimal amount, String operation) {
         try {
             String endpoint = operation.equals("deduct") ? "deduct" : "add";
@@ -300,6 +312,10 @@ public class TransactionService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean walletFallback(Long userId, BigDecimal amount, String operation, Exception ex) {
+        return false;
     }
 
     private void createLedgerEntries(Transaction transaction) {
