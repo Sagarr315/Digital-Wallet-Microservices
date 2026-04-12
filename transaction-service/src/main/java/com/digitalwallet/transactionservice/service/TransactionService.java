@@ -1,6 +1,7 @@
 package com.digitalwallet.transactionservice.service;
 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import com.digitalwallet.transactionservice.entity.IdempotencyRecord;
 import com.digitalwallet.transactionservice.dto.SendMoneyRequest;
 import com.digitalwallet.transactionservice.dto.TransactionResponse;
@@ -32,6 +33,8 @@ import org.springframework.data.domain.Sort;
 
 @Service
 public class TransactionService {
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(TransactionService.class);
 
     @Autowired
     private RestTemplate restTemplate;
@@ -226,6 +229,7 @@ public class TransactionService {
         }
     }
 
+    @Retry(name = "paymentService")
     @CircuitBreaker(name = "paymentService", fallbackMethod = "paymentValidationFallback")
     private boolean validatePaymentWithPaymentService(SendMoneyRequest request) {
         try {
@@ -253,9 +257,13 @@ public class TransactionService {
     }
 
     private boolean paymentValidationFallback(SendMoneyRequest request, Exception ex) {
+        log.error("Payment validation failed for senderId={}, amount={}",
+                request.getSenderId(), request.getAmount(), ex);
         return false;
+
     }
 
+    @Retry(name = "paymentService")
     @CircuitBreaker(name = "paymentService", fallbackMethod = "paymentReferenceFallback")
     private String getPaymentReference(SendMoneyRequest request) {
         try {
@@ -283,9 +291,12 @@ public class TransactionService {
     }
 
     private String paymentReferenceFallback(SendMoneyRequest request, Exception ex) {
+        log.error("Payment processing failed for senderId={}, amount={}",
+                request.getSenderId(), request.getAmount(), ex);
         return null;
     }
-    
+
+    @Retry(name = "walletService")
     @CircuitBreaker(name = "walletService", fallbackMethod = "walletFallback")
     private boolean updateWalletBalance(Long userId, BigDecimal amount, String operation) {
         try {
@@ -315,6 +326,8 @@ public class TransactionService {
     }
 
     private boolean walletFallback(Long userId, BigDecimal amount, String operation, Exception ex) {
+        log.error("Wallet update failed for userId={}, operation={}, amount={}",
+                userId, operation, amount, ex);
         return false;
     }
 
