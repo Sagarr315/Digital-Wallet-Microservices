@@ -1,4 +1,4 @@
-package com.digitalwallet.paymentservice.service;
+package com.digitalwallet.paymentservice.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
-public class AuthService {
+public class AuthConfig {
 
     @Autowired
     private RestTemplate restTemplate;

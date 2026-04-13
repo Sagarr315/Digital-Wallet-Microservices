@@ -1,6 +1,6 @@
 package com.digitalwallet.paymentservice.config;
 
-import com.digitalwallet.paymentservice.service.AuthService;
+import com.digitalwallet.paymentservice.config.AuthConfig ;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,10 +18,10 @@ import java.util.Collections;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private final AuthService authService;
+    private final AuthConfig authService;
 
     @Autowired
-    public JwtAuthFilter(AuthService authService) {
+    public JwtAuthFilter(AuthConfig authService) {
         this.authService = authService;
     }
 

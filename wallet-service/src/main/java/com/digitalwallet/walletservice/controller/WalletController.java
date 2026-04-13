@@ -110,7 +110,6 @@ public class WalletController {
         walletRepository.save(wallet);
 
         walletService.evictBalanceCache(userId);
-        
         return ResponseEntity.ok("Balance added successfully");
     }
 

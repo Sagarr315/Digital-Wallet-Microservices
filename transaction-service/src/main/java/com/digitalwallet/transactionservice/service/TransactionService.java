@@ -61,17 +61,20 @@ public class TransactionService {
 
     @Transactional
     public TransactionResponse sendMoney(SendMoneyRequest request, String idempotencyKey) {
-        try {
-            String cachedResponse = redisTemplate.opsForValue().get(idempotencyKey);
 
+        //  STEP 0: Validate key
+        if (idempotencyKey == null || idempotencyKey.isEmpty()) {
+            throw new RuntimeException("Idempotency key missing");
+        }
+
+        try {
+            //  STEP 1: Check Redis
+            String cachedResponse = redisTemplate.opsForValue().get(idempotencyKey);
             if (cachedResponse != null) {
-                try {
-                    return objectMapper.readValue(cachedResponse, TransactionResponse.class);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to deserialize Redis response");
-                }
+                return objectMapper.readValue(cachedResponse, TransactionResponse.class);
             }
 
+            //  STEP 2: Check DB
             Optional<IdempotencyRecord> existing =
                     idempotencyRepository.findByKey(idempotencyKey);
 
@@ -84,47 +87,55 @@ public class TransactionService {
                         java.time.Duration.ofMinutes(10)
                 );
 
-                try {
-                    return objectMapper.readValue(
-                            record.getResponse(),
-                            TransactionResponse.class
-                    );
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to deserialize response");
-                }
+                return objectMapper.readValue(
+                        record.getResponse(),
+                        TransactionResponse.class
+                );
             }
 
+            //  STEP 3: CREATE NEW RECORD (FIXED)
             IdempotencyRecord record = new IdempotencyRecord();
             record.setKey(idempotencyKey);
             record.setStatus("PENDING");
-            idempotencyRepository.save(record);
 
+            //  IMPORTANT: saveAndFlush
+            record = idempotencyRepository.saveAndFlush(record);
+
+            // STEP 4: VALIDATE PAYMENT
             if (!validatePaymentWithPaymentService(request)) {
                 record.setStatus("FAILED");
-                idempotencyRepository.save(record);
+                idempotencyRepository.saveAndFlush(record);
+
                 return new TransactionResponse(false, null, null, "Payment validation failed");
             }
 
+            //  STEP 5: GET REFERENCE
             String referenceId = getPaymentReference(request);
             if (referenceId == null) {
                 record.setStatus("FAILED");
-                idempotencyRepository.save(record);
+                idempotencyRepository.saveAndFlush(record);
+
                 return new TransactionResponse(false, null, null, "Failed to get payment reference");
             }
 
+            //  STEP 6: WALLET OPERATIONS
             if (!updateWalletBalance(request.getSenderId(), request.getAmount(), "deduct")) {
                 record.setStatus("FAILED");
-                idempotencyRepository.save(record);
+                idempotencyRepository.saveAndFlush(record);
+
                 return new TransactionResponse(false, null, null, "Failed to deduct from sender wallet");
             }
 
             if (!updateWalletBalance(request.getReceiverId(), request.getAmount(), "add")) {
                 updateWalletBalance(request.getSenderId(), request.getAmount(), "add");
+
                 record.setStatus("FAILED");
-                idempotencyRepository.save(record);
+                idempotencyRepository.saveAndFlush(record);
+
                 return new TransactionResponse(false, null, null, "Failed to add to receiver wallet");
             }
 
+            //  STEP 7: SAVE TRANSACTION
             Transaction transaction = new Transaction(
                     request.getSenderId(),
                     request.getReceiverId(),
@@ -132,10 +143,13 @@ public class TransactionService {
                     "SUCCESS",
                     referenceId
             );
+
             transaction = transactionRepository.save(transaction);
 
+            //  STEP 8: LEDGER
             createLedgerEntries(transaction);
 
+            //  STEP 9: KAFKA
             try {
                 paymentEventProducer.sendPaymentEvent(
                         transaction.getId(),
@@ -144,9 +158,11 @@ public class TransactionService {
                         request.getAmount(),
                         referenceId
                 );
-            } catch (Exception kafkaError) {
+            } catch (Exception e) {
+                log.error("Kafka failed", e);
             }
 
+            //  STEP 10: RESPONSE
             TransactionResponse response = new TransactionResponse(
                     true,
                     transaction.getId(),
@@ -154,33 +170,24 @@ public class TransactionService {
                     "Payment sent successfully"
             );
 
-            try {
-                String responseJson = objectMapper.writeValueAsString(response);
+            //  STEP 11: SAVE SUCCESS RESPONSE
+            String responseJson = objectMapper.writeValueAsString(response);
 
-                record.setStatus("SUCCESS");
-                record.setResponse(responseJson);
-                idempotencyRepository.save(record);
+            record.setStatus("SUCCESS");
+            record.setResponse(responseJson);
+            idempotencyRepository.saveAndFlush(record);
 
-                redisTemplate.opsForValue().set(
-                        idempotencyKey,
-                        responseJson,
-                        java.time.Duration.ofMinutes(10)
-                );
-            } catch (Exception e) {
-            }
+            //  STEP 12: CACHE
+            redisTemplate.opsForValue().set(
+                    idempotencyKey,
+                    responseJson,
+                    java.time.Duration.ofMinutes(10)
+            );
 
             return response;
 
         } catch (Exception e) {
-
-            Optional<IdempotencyRecord> recordOpt =
-                    idempotencyRepository.findByKey(idempotencyKey);
-
-            if (recordOpt.isPresent()) {
-                IdempotencyRecord record = recordOpt.get();
-                record.setStatus("FAILED");
-                idempotencyRepository.save(record);
-            }
+            log.error("Transaction failed", e);
 
             return new TransactionResponse(false, null, null,
                     "Transaction failed: " + e.getMessage());
